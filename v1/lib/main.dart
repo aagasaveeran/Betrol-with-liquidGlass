@@ -1,16 +1,14 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Set transparent status bar for the edge-to-edge look
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
-
   runApp(const BikeFuelAgentApp());
 }
 
@@ -21,20 +19,26 @@ class BikeFuelAgentApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Bike Fuel Agent',
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF09090B),
         fontFamily: 'SF Pro Display',
-        useMaterial3: true,
         brightness: Brightness.dark,
+        useMaterial3: true,
       ),
       home: const HomeDashboard(),
     );
   }
 }
 
-class HomeDashboard extends StatelessWidget {
+class HomeDashboard extends StatefulWidget {
   const HomeDashboard({super.key});
+
+  @override
+  State<HomeDashboard> createState() => _HomeDashboardState();
+}
+
+class _HomeDashboardState extends State<HomeDashboard> {
+  double _fuelLevel = 0.65; // Initial fuel level (65%)
 
   @override
   Widget build(BuildContext context) {
@@ -45,32 +49,44 @@ class HomeDashboard extends StatelessWidget {
           // ── Layer 1: Background ──────────────────────────────────────────
           const _BackgroundLayer(),
 
-          // ── Layer 2: Scrollable Content ───────────────────────────────────
+          // ── Layer 2: Main Content ────────────────────────────────────────
           SafeArea(
-            bottom: false,
             child: Column(
               children: [
                 _buildHeader(),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24.0),
-                  child: _FuelHeroCard(),
-                ),
-                const SizedBox(height: 20),
+                
+                // THE 3D PETROL ORB
+                const SizedBox(height: 10),
+                FuelOrb(fuelLevel: _fuelLevel),
+                const SizedBox(height: 15),
+                
+                _buildFuelStats(),
+
                 Expanded(
                   child: ListView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.only(top: 10, left: 24, right: 24, bottom: 140),
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 150),
                     children: [
                       const Text(
                         "Activity History",
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5),
                       ),
                       const SizedBox(height: 16),
                       _buildTripTile("Office ➝ Home", "4.8 km", "-0.09 L", Colors.blue),
                       _buildTripTile("Weekend Ride", "12.4 km", "-0.25 L", Colors.purple),
                       _buildRefuelTile("Shell Station", "₹200", "+2.2 L", Colors.amber),
                       _buildTripTile("Gym ➝ Cafe", "2.1 km", "-0.04 L", Colors.pink),
-                      _buildTripTile("Cafe ➝ Home", "3.5 km", "-0.06 L", Colors.green),
+                      
+                      // ── Real-time Control (For testing the "Rise and Fall") ──
+                      const SizedBox(height: 20),
+                      Text("ADJUST FUEL LEVEL (DEMO)", 
+                        style: TextStyle(fontSize: 10, color: Colors.white24, fontWeight: FontWeight.bold)),
+                      Slider(
+                        value: _fuelLevel,
+                        activeColor: Colors.amber,
+                        inactiveColor: Colors.white10,
+                        onChanged: (val) => setState(() => _fuelLevel = val),
+                      ),
                     ],
                   ),
                 ),
@@ -78,30 +94,30 @@ class HomeDashboard extends StatelessWidget {
             ),
           ),
 
-          // ── Layer 3: Liquid Glass Nav Bar ─────────────────────────────────
+          // ── Layer 3: Nav Bar ─────────────────────────────────────────────
           const _FloatingLiquidGlassNavBar(),
         ],
       ),
     );
   }
 
-  // UI Helpers
+  // --- UI BUILDERS ---
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 15.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Good Afternoon", style: TextStyle(fontSize: 15, color: Colors.white54)),
-              Text("Aagasaveeran", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
+              Text("Good Afternoon", style: TextStyle(fontSize: 14, color: Colors.white54)),
+              Text("Aagasaveeran", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
             ],
           ),
           CircleAvatar(
-            radius: 27,
-            backgroundColor: const Color(0xFF1C1C1E),
+            radius: 25,
+            backgroundColor: Colors.white.withOpacity(0.05),
             child: const Text("AG", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
@@ -109,51 +125,175 @@ class HomeDashboard extends StatelessWidget {
     );
   }
 
-  Widget _buildTripTile(String title, String distance, String fuel, Color color) {
-    return _BaseCard(
+  Widget _buildFuelStats() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _statColumn("LITERS", "${(_fuelLevel * 10).toStringAsFixed(1)}L"),
+        Container(width: 1, height: 30, color: Colors.white10, margin: const EdgeInsets.symmetric(horizontal: 30)),
+        _statColumn("RANGE", "${(_fuelLevel * 450).toInt()} KM"),
+      ],
+    );
+  }
+
+  Widget _statColumn(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white38, letterSpacing: 1.5)),
+        Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
+      ],
+    );
+  }
+
+  Widget _buildTripTile(String title, String dist, String fuel, Color color) {
+    return _GlassCard(
       child: ListTile(
-        leading: CircleAvatar(backgroundColor: color.withOpacity(0.2), child: Icon(Icons.motorcycle, color: color)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(distance, style: const TextStyle(color: Colors.white54)),
-        trailing: Text(fuel, style: const TextStyle(fontWeight: FontWeight.bold)),
+        leading: CircleAvatar(backgroundColor: color.withOpacity(0.15), child: Icon(Icons.motorcycle, color: color, size: 20)),
+        title: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        subtitle: Text(dist, style: const TextStyle(fontSize: 12, color: Colors.white38)),
+        trailing: Text(fuel, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
       ),
     );
   }
 
   Widget _buildRefuelTile(String station, String cost, String amount, Color color) {
-    return _BaseCard(
+    return _GlassCard(
       child: ListTile(
-        leading: CircleAvatar(backgroundColor: color.withOpacity(0.2), child: Icon(Icons.local_gas_station, color: color)),
-        title: Text(station, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(cost, style: const TextStyle(color: Colors.white54)),
+        leading: CircleAvatar(backgroundColor: color.withOpacity(0.15), child: Icon(Icons.local_gas_station, color: color, size: 20)),
+        title: Text(station, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        subtitle: Text(cost, style: const TextStyle(fontSize: 12, color: Colors.white38)),
         trailing: Text(amount, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
       ),
     );
   }
 }
 
-// ── Background with Animated Blobs ───────────────────────────────────────────
+// ── UPDATED FUEL ORB WIDGET ──────────────────────────────────────────────────
+class FuelOrb extends StatefulWidget {
+  final double fuelLevel;
+  final double size;
+  const FuelOrb({super.key, required this.fuelLevel, this.size = 230});
+
+  @override
+  State<FuelOrb> createState() => _FuelOrbState();
+}
+
+class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
+  late AnimationController _waveController;
+
+  @override
+  void initState() {
+    super.initState();
+    _waveController = AnimationController(
+      vsync: this, 
+      duration: const Duration(seconds: 2)
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _waveController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OCLiquidGlassGroup(
+      settings: const OCLiquidGlassSettings(
+        refractStrength: -0.2, // Stronger warp for realistic 3D sphere look
+        blurRadiusPx: 0.5,
+        specStrength: 55.0,
+        specPower: 40.0,
+        lightbandStrength: 0.8,
+      ),
+      child: OCLiquidGlass(
+        width: widget.size,
+        height: widget.size,
+        borderRadius: widget.size / 2,
+        color: Colors.white.withOpacity(0.02),
+        // The ClipOval ensures the liquid never leaks outside the circle
+        child: ClipOval(
+          child: AnimatedBuilder(
+            animation: _waveController,
+            builder: (context, child) {
+              return CustomPaint(
+                painter: _LiquidPainter(
+                  waveValue: _waveController.value,
+                  fillLevel: widget.fuelLevel,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiquidPainter extends CustomPainter {
+  final double waveValue;
+  final double fillLevel;
+
+  _LiquidPainter({required this.waveValue, required this.fillLevel});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          const Color(0xFFFFD700).withOpacity(0.9), // Bright surface
+          const Color(0xFFEAB308),                   // Core color
+          const Color(0xFF451A03),                   // Dark base
+        ],
+      ).createShader(Offset.zero & size);
+
+    final path = Path();
+    
+    // Calculate the Y coordinate based on fuel level
+    // 1.0 = top (0 height), 0.0 = bottom (full height)
+    final fillHeight = size.height * (1 - fillLevel);
+
+    // Start drawing the sloshing top edge
+    path.moveTo(0, fillHeight);
+    for (double x = 0; x <= size.width; x++) {
+      // Sine wave for the sloshing effect
+      double sine = math.sin((waveValue * 2 * math.pi) + (x / size.width * 2 * math.pi));
+      path.lineTo(x, fillHeight + (sine * 8)); 
+    }
+
+    // Close the path at the bottom corners of the container
+    // (ClipOval handles the rounding for us)
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.close();
+
+    canvas.drawPath(path, paint);
+    
+    // Adds a glossy "rim" to the top of the fuel surface
+    final rimPaint = Paint()
+      ..color = Colors.white.withOpacity(0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+    canvas.drawPath(path, rimPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+// ── SUPPORTING UI COMPONENTS ────────────────────────────────────────────────
 class _BackgroundLayer extends StatelessWidget {
   const _BackgroundLayer();
-
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFFF59E0B)],
-                stops: [0.0, 0.3, 0.6, 1.0],
-              ),
-            ),
-          ),
-        ),
-        _blob(80, -60, 220, Colors.teal),
-        _blob(250, null, 200, Colors.indigo, right: -60),
-        _blob(null, 40, 180, Colors.blue, bottom: 20),
-        _blob(null, null, 200, Colors.amber, bottom: 0, right: 20),
+        Positioned.fill(child: Container(decoration: const BoxDecoration(color: Color(0xFF09090B)))),
+        _blob(80, -60, 250, Colors.blue.withOpacity(0.4)),
+        _blob(250, null, 220, Colors.purple.withOpacity(0.3), right: -60),
+        _blob(null, 40, 200, Colors.pink.withOpacity(0.3), bottom: 20),
       ],
     );
   }
@@ -163,105 +303,58 @@ class _BackgroundLayer extends StatelessWidget {
       top: top, left: left, right: right, bottom: bottom,
       child: Container(
         width: size, height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: color.withOpacity(0.6), blurRadius: 80, spreadRadius: 30)],
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
+          BoxShadow(color: color, blurRadius: 100, spreadRadius: 40),
+        ]),
       ),
     );
   }
 }
 
-// ── Common Card Structure ───────────────────────────────────────────────────
-class _BaseCard extends StatelessWidget {
+class _GlassCard extends StatelessWidget {
   final Widget child;
-  final double height;
-  const _BaseCard({required this.child, this.height = 80});
-
+  const _GlassCard({required this.child});
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: height,
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 0.5),
-        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.5),
+        color: Colors.white.withOpacity(0.04),
       ),
       child: child,
     );
   }
 }
 
-// ── Fuel Hero Card ──────────────────────────────────────────────────────────
-class _FuelHeroCard extends StatelessWidget {
-  const _FuelHeroCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return _BaseCard(
-      height: 200,
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 130, height: 130,
-              child: CircularProgressIndicator(
-                value: 0.65, strokeWidth: 10, strokeCap: StrokeCap.round,
-                backgroundColor: Colors.white10, color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 24),
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text("EST. RANGE", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white54)),
-                Text("1.1 Liters", style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-                Text("50 km/L avg.", style: TextStyle(color: Colors.amber, fontSize: 14)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── THE REFACTORED NAV BAR (Using Package) ──────────────────────────────────
 class _FloatingLiquidGlassNavBar extends StatelessWidget {
   const _FloatingLiquidGlassNavBar();
-
   @override
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 30.0, left: 24, right: 24),
+        padding: const EdgeInsets.only(bottom: 30, left: 24, right: 24),
         child: OCLiquidGlassGroup(
-          settings: const OCLiquidGlassSettings(
-            refractStrength: -0.12, // High refraction for "magnification" look
-            blurRadiusPx: 4.0,       // Frosted glass effect
-            specStrength: 40.0,      // Sharp highlights
-          ),
+          settings: const OCLiquidGlassSettings(refractStrength: -0.1, blurRadiusPx: 3.0),
           child: OCLiquidGlass(
             width: double.infinity,
-            height: 80,
-            borderRadius: 40,
-            color: Colors.white.withOpacity(0.1),
+            height: 75,
+            borderRadius: 38,
+            color: Colors.white.withOpacity(0.08),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                const Icon(Icons.grid_view_rounded, size: 28),
-                const Icon(Icons.explore_rounded, color: Colors.white38),
+                const Icon(Icons.grid_view_rounded, size: 26, color: Colors.white),
+                const Icon(Icons.explore_rounded, size: 26, color: Colors.white38),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                  child: const Icon(Icons.add, color: Colors.black),
+                  child: const Icon(Icons.add, color: Colors.black, size: 28),
                 ),
-                const Icon(Icons.history_rounded, color: Colors.white38),
-                const Icon(Icons.person_rounded, color: Colors.white38),
+                const Icon(Icons.history_rounded, size: 26, color: Colors.white38),
+                const Icon(Icons.person_rounded, size: 26, color: Colors.white38),
               ],
             ),
           ),
@@ -270,5 +363,3 @@ class _FloatingLiquidGlassNavBar extends StatelessWidget {
     );
   }
 }
-
-// before fuel orb
