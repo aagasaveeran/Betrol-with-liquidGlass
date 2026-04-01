@@ -270,3 +270,5 @@ class _FloatingLiquidGlassNavBar extends StatelessWidget {
     );
   }
 }
+
+// before fuel orb
