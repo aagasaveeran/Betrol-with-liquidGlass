@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
+import 'package:sensors_plus/sensors_plus.dart'; // New Import
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,7 +40,7 @@ class HomeDashboard extends StatefulWidget {
 }
 
 class _HomeDashboardState extends State<HomeDashboard> {
-  double _fuelLevel = 0.65; // Initial fuel level (65%)
+  double _fuelLevel = 0.65;
 
   @override
   Widget build(BuildContext context) {
@@ -46,22 +48,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
       extendBody: true,
       body: Stack(
         children: [
-          // ── Layer 1: Background ──────────────────────────────────────────
           const _BackgroundLayer(),
-
-          // ── Layer 2: Main Content ────────────────────────────────────────
           SafeArea(
             child: Column(
               children: [
                 _buildHeader(),
-                
-                // THE 3D PETROL ORB
                 const SizedBox(height: 10),
+                // PHYSICS-DRIVEN ORB
                 FuelOrb(fuelLevel: _fuelLevel),
                 const SizedBox(height: 15),
-                
                 _buildFuelStats(),
-
                 Expanded(
                   child: ListView(
                     physics: const BouncingScrollPhysics(),
@@ -76,8 +72,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       _buildTripTile("Weekend Ride", "12.4 km", "-0.25 L", Colors.purple),
                       _buildRefuelTile("Shell Station", "₹200", "+2.2 L", Colors.amber),
                       _buildTripTile("Gym ➝ Cafe", "2.1 km", "-0.04 L", Colors.pink),
-                      
-                      // ── Real-time Control (For testing the "Rise and Fall") ──
                       const SizedBox(height: 20),
                       Text("ADJUST FUEL LEVEL (DEMO)", 
                         style: TextStyle(fontSize: 10, color: Colors.white24, fontWeight: FontWeight.bold)),
@@ -93,15 +87,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
               ],
             ),
           ),
-
-          // ── Layer 3: Nav Bar ─────────────────────────────────────────────
           const _FloatingLiquidGlassNavBar(),
         ],
       ),
     );
   }
 
-  // --- UI BUILDERS ---
+  // UI Helpers
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 15.0),
@@ -168,7 +160,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 }
 
-// ── UPDATED FUEL ORB WIDGET ──────────────────────────────────────────────────
+// ── PHYSICAL FUEL ORB WIDGET ────────────────────────────────────────────────
 class FuelOrb extends StatefulWidget {
   final double fuelLevel;
   final double size;
@@ -180,18 +172,35 @@ class FuelOrb extends StatefulWidget {
 
 class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
   late AnimationController _waveController;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
+  
+  double _tiltAngle = 0.0;
+  double _sloshForce = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _waveController = AnimationController(
-      vsync: this, 
-      duration: const Duration(seconds: 2)
-    )..repeat();
+    _waveController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+
+    // Listen to Accelerometer
+    _accelerometerSubscription = accelerometerEvents.listen((AccelerometerEvent event) {
+      if (!mounted) return;
+      setState(() {
+        // Calculate tilt using atan2(x, y)
+        double targetAngle = math.atan2(event.x, event.y);
+        // Low-pass filter to smooth the liquid movement
+        _tiltAngle = _tiltAngle * 0.8 + targetAngle * 0.2;
+
+        // Calculate shake/slosh force (G-force change)
+        double force = math.sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
+        _sloshForce = (force - 9.8).abs() * 2.0; 
+      });
+    });
   }
 
   @override
   void dispose() {
+    _accelerometerSubscription?.cancel();
     _waveController.dispose();
     super.dispose();
   }
@@ -200,10 +209,9 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return OCLiquidGlassGroup(
       settings: const OCLiquidGlassSettings(
-        refractStrength: -0.2, // Stronger warp for realistic 3D sphere look
+        refractStrength: -0.25, 
         blurRadiusPx: 0.5,
-        specStrength: 55.0,
-        specPower: 40.0,
+        specStrength: 60.0,
         lightbandStrength: 0.8,
       ),
       child: OCLiquidGlass(
@@ -211,7 +219,6 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
         height: widget.size,
         borderRadius: widget.size / 2,
         color: Colors.white.withOpacity(0.02),
-        // The ClipOval ensures the liquid never leaks outside the circle
         child: ClipOval(
           child: AnimatedBuilder(
             animation: _waveController,
@@ -220,6 +227,8 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
                 painter: _LiquidPainter(
                   waveValue: _waveController.value,
                   fillLevel: widget.fuelLevel,
+                  tiltAngle: _tiltAngle,
+                  sloshForce: _sloshForce,
                 ),
               );
             },
@@ -233,59 +242,73 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
 class _LiquidPainter extends CustomPainter {
   final double waveValue;
   final double fillLevel;
+  final double tiltAngle;
+  final double sloshForce;
 
-  _LiquidPainter({required this.waveValue, required this.fillLevel});
+  _LiquidPainter({
+    required this.waveValue, 
+    required this.fillLevel, 
+    required this.tiltAngle,
+    required this.sloshForce,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 1. Rotate the Canvas based on device tilt
+    canvas.save();
+    canvas.translate(size.width / 2, size.height / 2);
+    canvas.rotate(-tiltAngle); 
+    canvas.translate(-size.width / 2, -size.height / 2);
+
     final paint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          const Color(0xFFFFD700).withOpacity(0.9), // Bright surface
-          const Color(0xFFEAB308),                   // Core color
-          const Color(0xFF451A03),                   // Dark base
+          const Color(0xFFFFD700).withOpacity(0.9),
+          const Color(0xFFEAB308),
+          const Color(0xFF451A03),
         ],
       ).createShader(Offset.zero & size);
 
     final path = Path();
-    
-    // Calculate the Y coordinate based on fuel level
-    // 1.0 = top (0 height), 0.0 = bottom (full height)
     final fillHeight = size.height * (1 - fillLevel);
 
-    // Start drawing the sloshing top edge
-    path.moveTo(0, fillHeight);
-    for (double x = 0; x <= size.width; x++) {
-      // Sine wave for the sloshing effect
-      double sine = math.sin((waveValue * 2 * math.pi) + (x / size.width * 2 * math.pi));
-      path.lineTo(x, fillHeight + (sine * 8)); 
+    // Draw larger than size so rotation doesn't show edges
+    double overflow = 80.0;
+    path.moveTo(-overflow, fillHeight);
+    
+    for (double x = -overflow; x <= size.width + overflow; x++) {
+      // Base slosh + shake slosh
+      double baseWave = math.sin((waveValue * 2 * math.pi) + (x / size.width * 2 * math.pi)) * 8;
+      double shakeWave = math.sin((waveValue * 6 * math.pi) + (x / 20)) * sloshForce;
+      path.lineTo(x, fillHeight + baseWave + shakeWave); 
     }
 
-    // Close the path at the bottom corners of the container
-    // (ClipOval handles the rounding for us)
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
+    path.lineTo(size.width + overflow, size.height + overflow);
+    path.lineTo(-overflow, size.height + overflow);
     path.close();
 
     canvas.drawPath(path, paint);
     
-    // Adds a glossy "rim" to the top of the fuel surface
+    // Surface Reflection Line
     final rimPaint = Paint()
       ..color = Colors.white.withOpacity(0.3)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
+      ..strokeWidth = 2.0;
     canvas.drawPath(path, rimPaint);
+
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// ── SUPPORTING UI COMPONENTS ────────────────────────────────────────────────
+// ── SUPPORTING COMPONENTS (Unchanged) ────────────────────────────────────────
 class _BackgroundLayer extends StatelessWidget {
   const _BackgroundLayer();
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -298,33 +321,35 @@ class _BackgroundLayer extends StatelessWidget {
     );
   }
 
-  Widget _blob(double? top, double? left, double size, Color color, {double? right, double? bottom}) {
+  // Renamed {double? r, double? b} to {double? right, double? bottom}
+  Widget _blob(double? t, double? l, double s, Color c, {double? right, double? bottom}) {
     return Positioned(
-      top: top, left: left, right: right, bottom: bottom,
+      top: t,
+      left: l,
+      right: right,
+      bottom: bottom,
       child: Container(
-        width: size, height: size,
-        decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-          BoxShadow(color: color, blurRadius: 100, spreadRadius: 40),
-        ]),
+        width: s,
+        height: s,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(color: c, blurRadius: 100, spreadRadius: 40),
+          ],
+        ),
       ),
     );
   }
 }
-
 class _GlassCard extends StatelessWidget {
   final Widget child;
   const _GlassCard({required this.child});
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
+    return Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.5),
-        color: Colors.white.withOpacity(0.04),
-      ),
-      child: child,
-    );
+        color: Colors.white.withOpacity(0.04)), child: child);
   }
 }
 
@@ -332,34 +357,16 @@ class _FloatingLiquidGlassNavBar extends StatelessWidget {
   const _FloatingLiquidGlassNavBar();
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Padding(
+    return Align(alignment: Alignment.bottomCenter, child: Padding(
         padding: const EdgeInsets.only(bottom: 30, left: 24, right: 24),
-        child: OCLiquidGlassGroup(
-          settings: const OCLiquidGlassSettings(refractStrength: -0.1, blurRadiusPx: 3.0),
-          child: OCLiquidGlass(
-            width: double.infinity,
-            height: 75,
-            borderRadius: 38,
-            color: Colors.white.withOpacity(0.08),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
+        child: OCLiquidGlassGroup(settings: const OCLiquidGlassSettings(refractStrength: -0.1, blurRadiusPx: 3.0),
+          child: OCLiquidGlass(width: double.infinity, height: 75, borderRadius: 38, color: Colors.white.withOpacity(0.08),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
                 const Icon(Icons.grid_view_rounded, size: 26, color: Colors.white),
                 const Icon(Icons.explore_rounded, size: 26, color: Colors.white38),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                  child: const Icon(Icons.add, color: Colors.black, size: 28),
-                ),
+                Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.black, size: 28)),
                 const Icon(Icons.history_rounded, size: 26, color: Colors.white38),
                 const Icon(Icons.person_rounded, size: 26, color: Colors.white38),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+              ])))));
   }
 }
