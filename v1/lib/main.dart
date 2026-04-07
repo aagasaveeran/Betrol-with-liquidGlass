@@ -166,26 +166,52 @@ class FuelOrb extends StatefulWidget {
 }
 
 class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
-  late AnimationController _timeController;
+  late AnimationController _ticker;
   StreamSubscription? _accelSubscription;
-  double _tilt = 0.0;
+  
+  double _targetX = 0.0;
+  double _targetY = 9.8;
+
+  double _currentX = 0.0;
+  double _currentY = 9.8;
+  double _velX = 0.0;
+  double _velY = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _timeController = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat();
+    
+    _ticker = AnimationController(vsync: this, duration: const Duration(days: 365))
+      ..addListener(_updatePhysics)
+      ..forward();
+      
     _accelSubscription = accelerometerEventStream().listen((event) {
       if (!mounted) return;
-      setState(() {
-        double targetTilt = math.atan2(event.x, event.y);
-        _tilt = _tilt * 0.9 + targetTilt * 0.1; // Smooth dampening
-      });
+      // 1. HEAVY LOW-PASS FILTER: Prevents rapid jitters from the hardware sensor.
+      // 90% of the old value, only 10% of the new value. Smooths input completely.
+      _targetX = _targetX * 0.90 + event.x * 0.10;
+      _targetY = _targetY * 0.90 + event.y * 0.10;
     });
+  }
+
+  void _updatePhysics() {
+    // 2. TUNED PHYSICS FOR HEAVY LATENCY
+    const double stiffness = 0.015; // Extremely low stiffness = high latency / slow to react
+    const double damping = 0.94;    // High damping = keeps smooth momentum, glides to a stop
+
+    double forceX = (_targetX - _currentX) * stiffness;
+    double forceY = (_targetY - _currentY) * stiffness;
+
+    _velX = (_velX + forceX) * damping;
+    _velY = (_velY + forceY) * damping;
+
+    _currentX += _velX;
+    _currentY += _velY;
   }
 
   @override
   void dispose() {
-    _timeController.dispose();
+    _ticker.dispose();
     _accelSubscription?.cancel();
     super.dispose();
   }
@@ -201,15 +227,21 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
         color: Colors.white.withOpacity(0.02),
         child: ClipOval(
           child: AnimatedBuilder(
-            animation: _timeController,
+            animation: _ticker,
             builder: (context, _) {
+              double tilt = math.atan2(_currentX, _currentY);
+              double slosh = math.sqrt(_velX * _velX + _velY * _velY);
+              double gForce = math.sqrt(_currentX * _currentX + _currentY * _currentY);
+
               return CustomPaint(
                 size: Size(widget.size, widget.size),
                 painter: ShaderPainter(
                   shader: widget.program.fragmentShader(),
                   fillLevel: widget.fuelLevel,
-                  tilt: _tilt,
-                  time: _timeController.value * 2 * math.pi,
+                  tilt: tilt,
+                  time: DateTime.now().millisecondsSinceEpoch / 1000.0,
+                  slosh: slosh,
+                  gForce: gForce,
                 ),
               );
             },
@@ -222,11 +254,16 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
 
 class ShaderPainter extends CustomPainter {
   final ui.FragmentShader shader;
-  final double fillLevel;
-  final double tilt;
-  final double time;
+  final double fillLevel, tilt, time, slosh, gForce;
 
-  ShaderPainter({required this.shader, required this.fillLevel, required this.tilt, required this.time});
+  ShaderPainter({
+    required this.shader, 
+    required this.fillLevel, 
+    required this.tilt, 
+    required this.time,
+    required this.slosh,
+    required this.gForce,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -235,6 +272,8 @@ class ShaderPainter extends CustomPainter {
     shader.setFloat(2, fillLevel);
     shader.setFloat(3, tilt);
     shader.setFloat(4, time);
+    shader.setFloat(5, slosh);     
+    shader.setFloat(6, gForce); 
     canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
   }
 

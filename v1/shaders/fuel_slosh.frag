@@ -5,36 +5,70 @@ uniform vec2 uSize;
 uniform float uFillLevel;
 uniform float uTilt;
 uniform float uTime;
+uniform float uSlosh;      
+uniform float uGForce;     
 
 out vec4 fragColor;
 
+float hash(float n) { return fract(sin(n) * 43758.5453123); }
+
 void main() {
     vec2 uv = FlutterFragCoord().xy / uSize;
-    
-    // Convert to centered coordinates for rotation
     vec2 p = uv - vec2(0.5);
-    
-    // Apply rotation based on tilt
+
+    // Apply the physically accurate tilt
     float cosT = cos(uTilt);
     float sinT = sin(uTilt);
     vec2 rotP = vec2(p.x * cosT - p.y * sinT, p.x * sinT + p.y * cosT);
-    
-    // Move back to 0.0 - 1.0 range
     rotP += vec2(0.5);
+
+    // --- PHYSICS DISTORTIONS (Tuned for heavier fluid) ---
+    float distFromCenter = (rotP.x - 0.5) * 2.0; 
     
-    // Liquid physics: Wave + Surface level
-    float wave = sin(rotP.x * 8.0 + uTime * 3.0) * 0.015;
+    // 1. Rolling Waves (Slower, wider waves for heavy fuel)
+    float waveTime = uTime * 2.5; // Slowed down from 4.0
+    float baseWave = sin(rotP.x * 4.0 + waveTime) * 0.012; // Wider frequency
+    float splashWave = sin(rotP.x * 8.0 - waveTime * 1.2) * (uSlosh * 0.008); // Less aggressive splash
+    
+    // 2. Wall Creep 
+    float wallCreep = (distFromCenter * distFromCenter) * uSlosh * 0.012;
+    
+    // 3. Freefall Clump
+    float freefallClump = smoothstep(9.8, 0.0, uGForce) * cos(distFromCenter * 3.14) * 0.15;
+    
+    // 4. Tremble 
+    float tremble = (hash(uTime * 0.5 + p.x) - 0.5) * clamp(uSlosh * 0.003, 0.0, 0.01);
+
     float level = 1.0 - uFillLevel;
-    
-    if (rotP.y > level + wave) {
-        // Fuel Gradient (Gold to Dark Amber)
-        vec3 colorTop = vec3(1.0, 0.84, 0.0);
-        vec3 colorBottom = vec3(0.45, 0.15, 0.02);
-        vec3 finalColor = mix(colorTop, colorBottom, (rotP.y - level));
+    float surfaceDistortion = baseWave + splashWave + wallCreep + tremble - freefallClump;
+
+    // --- RENDERING ---
+    if (rotP.y > level + surfaceDistortion) {
+        vec3 colorTop = vec3(1.0, 0.75, 0.0);
+        vec3 colorBot = vec3(0.2, 0.05, 0.0);
+        float depth = clamp((rotP.y - (level + surfaceDistortion)) * 2.0, 0.0, 1.0);
+        vec3 finalColor = mix(colorTop, colorBot, depth);
         
+        // Smoother, thicker foam line
+        float foam = smoothstep(0.03 + uSlosh*0.015, 0.0, abs(rotP.y - (level + surfaceDistortion)));
+        finalColor += foam * vec3(1.0, 0.9, 0.5) * clamp(uSlosh * 0.2, 0.0, 0.8);
+        
+        float bubbleGrid = sin(rotP.x * 40.0 + uTime * 1.5) * sin(rotP.y * 40.0 - uTime * 2.0);
+        float bubbles = smoothstep(0.88, 1.0, bubbleGrid) * clamp(uSlosh - 1.0, 0.0, 1.0) * 0.3;
+        finalColor += bubbles;
+
         fragColor = vec4(finalColor, 0.95);
     } else {
-        // Transparent top part of orb
+        // Less chaotic droplets
+        float dropletField = sin(rotP.x * 45.0 + uTime * 4.0) * sin(rotP.y * 45.0 + uTime * 3.0);
+        float distToSurface = (level + surfaceDistortion) - rotP.y;
+        
+        if (uSlosh > 1.5 && distToSurface > 0.0 && distToSurface < uSlosh * 0.04) {
+            if (dropletField > 0.98) {
+                fragColor = vec4(1.0, 0.8, 0.0, 0.6);
+                return;
+            }
+        }
         fragColor = vec4(0.0);
     }
 }
