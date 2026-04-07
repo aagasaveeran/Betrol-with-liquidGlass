@@ -166,26 +166,56 @@ class FuelOrb extends StatefulWidget {
 }
 
 class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
-  late AnimationController _timeController;
+  late AnimationController _ticker;
   StreamSubscription? _accelSubscription;
-  double _tilt = 0.0;
+  
+  // Target gravity from device hardware
+  double _targetX = 0.0;
+  double _targetY = 9.8;
+
+  // Actual simulated liquid center of mass
+  double _currentX = 0.0;
+  double _currentY = 9.8;
+  double _velX = 0.0;
+  double _velY = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _timeController = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat();
+    
+    // Setup continuous physics loop
+    _ticker = AnimationController(vsync: this, duration: const Duration(days: 365))
+      ..addListener(_updatePhysics)
+      ..forward();
+      
     _accelSubscription = accelerometerEventStream().listen((event) {
       if (!mounted) return;
-      setState(() {
-        double targetTilt = math.atan2(event.x, event.y);
-        _tilt = _tilt * 0.9 + targetTilt * 0.1; // Smooth dampening
-      });
+      _targetX = event.x;
+      _targetY = event.y;
     });
+  }
+
+  void _updatePhysics() {
+    // PHYSICS ENGINE PARAMETERS
+    const double stiffness = 0.04; // Lower = higher latency / heavier liquid
+    const double damping = 0.88;   // Higher = more bouncing / lower viscosity
+
+    // Calculate spring forces pulling fluid towards gravity
+    double forceX = (_targetX - _currentX) * stiffness;
+    double forceY = (_targetY - _currentY) * stiffness;
+
+    // Apply viscosity and momentum
+    _velX = (_velX + forceX) * damping;
+    _velY = (_velY + forceY) * damping;
+
+    // Move the actual fluid mass
+    _currentX += _velX;
+    _currentY += _velY;
   }
 
   @override
   void dispose() {
-    _timeController.dispose();
+    _ticker.dispose();
     _accelSubscription?.cancel();
     super.dispose();
   }
@@ -201,15 +231,22 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
         color: Colors.white.withOpacity(0.02),
         child: ClipOval(
           child: AnimatedBuilder(
-            animation: _timeController,
+            animation: _ticker,
             builder: (context, _) {
+              // Convert 2D vector data into Shader parameters
+              double tilt = math.atan2(_currentX, _currentY);
+              double slosh = math.sqrt(_velX * _velX + _velY * _velY);
+              double gForce = math.sqrt(_currentX * _currentX + _currentY * _currentY);
+
               return CustomPaint(
                 size: Size(widget.size, widget.size),
                 painter: ShaderPainter(
                   shader: widget.program.fragmentShader(),
                   fillLevel: widget.fuelLevel,
-                  tilt: _tilt,
-                  time: _timeController.value * 2 * math.pi,
+                  tilt: tilt,
+                  time: DateTime.now().millisecondsSinceEpoch / 1000.0,
+                  slosh: slosh,
+                  gForce: gForce,
                 ),
               );
             },
@@ -222,11 +259,16 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
 
 class ShaderPainter extends CustomPainter {
   final ui.FragmentShader shader;
-  final double fillLevel;
-  final double tilt;
-  final double time;
+  final double fillLevel, tilt, time, slosh, gForce;
 
-  ShaderPainter({required this.shader, required this.fillLevel, required this.tilt, required this.time});
+  ShaderPainter({
+    required this.shader, 
+    required this.fillLevel, 
+    required this.tilt, 
+    required this.time,
+    required this.slosh,
+    required this.gForce,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -235,6 +277,8 @@ class ShaderPainter extends CustomPainter {
     shader.setFloat(2, fillLevel);
     shader.setFloat(3, tilt);
     shader.setFloat(4, time);
+    shader.setFloat(5, slosh);     
+    shader.setFloat(6, gForce); 
     canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
   }
 
