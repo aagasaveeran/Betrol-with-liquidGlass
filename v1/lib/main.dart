@@ -187,17 +187,23 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
       
     _accelSubscription = accelerometerEventStream().listen((event) {
       if (!mounted) return;
-      // 1. HEAVY LOW-PASS FILTER: Prevents rapid jitters from the hardware sensor.
-      // 90% of the old value, only 10% of the new value. Smooths input completely.
-      _targetX = _targetX * 0.90 + event.x * 0.10;
-      _targetY = _targetY * 0.90 + event.y * 0.10;
+      
+      // Z-Axis Gimbal Lock Fix: When phone is flat on a table (Z is near 9.8),
+      // X and Y are near 0. This causes rapid, uncontrollable spinning.
+      // We blend the gravity to a safe upright vector (0, 9.8) based on how flat it is.
+      double flatFactor = (event.z.abs() / 9.8).clamp(0.0, 1.0);
+      double safeX = event.x * (1.0 - flatFactor) + 0.0 * flatFactor;
+      double safeY = event.y * (1.0 - flatFactor) + 9.8 * flatFactor;
+
+      _targetX = _targetX * 0.85 + safeX * 0.15;
+      _targetY = _targetY * 0.85 + safeY * 0.15;
     });
   }
 
   void _updatePhysics() {
-    // 2. TUNED PHYSICS FOR HEAVY LATENCY
-    const double stiffness = 0.015; // Extremely low stiffness = high latency / slow to react
-    const double damping = 0.94;    // High damping = keeps smooth momentum, glides to a stop
+    // PHYSICS TUNED FOR REALISTIC, THICK LIQUID WITH LATENCY
+    const double stiffness = 0.006; // Lower = much more latency, falls slowly
+    const double damping = 0.96;    // Higher = thick fluid momentum, smooth resting
 
     double forceX = (_targetX - _currentX) * stiffness;
     double forceY = (_targetY - _currentY) * stiffness;
@@ -232,6 +238,7 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
               double tilt = math.atan2(_currentX, _currentY);
               double slosh = math.sqrt(_velX * _velX + _velY * _velY);
               double gForce = math.sqrt(_currentX * _currentX + _currentY * _currentY);
+              
 
               return CustomPaint(
                 size: Size(widget.size, widget.size),
