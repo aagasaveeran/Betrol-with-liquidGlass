@@ -200,6 +200,7 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
     });
   }
 
+
   void _updatePhysics() {
     // PHYSICS TUNED FOR REALISTIC, THICK LIQUID WITH LATENCY
     const double stiffness = 0.006; // Lower = much more latency, falls slowly
