@@ -21,7 +21,7 @@ class BikeFuelAgentApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF09090B),
-        fontFamily: 'SF Pro Display',
+        fontFamily: 'SF Pro Display', // Will fallback to default if not in pubspec
         brightness: Brightness.dark,
         useMaterial3: true,
       ),
@@ -38,7 +38,8 @@ class HomeDashboard extends StatefulWidget {
 }
 
 class _HomeDashboardState extends State<HomeDashboard> {
-  double _fuelLevel = 0.65; // Initial fuel level (65%)
+  // Fuel amount now tracks exact liters (0.0 to 5.0 Max)
+  double _fuelAmount = 2.5;
 
   @override
   Widget build(BuildContext context) {
@@ -57,35 +58,47 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 
                 // THE 3D PETROL ORB
                 const SizedBox(height: 10),
-                FuelOrb(fuelLevel: _fuelLevel),
-                const SizedBox(height: 15),
+                FuelOrb(fuelAmount: _fuelAmount),
                 
-                _buildFuelStats(),
+                // RANGE TEXT UNDER ORB
+                const SizedBox(height: 15),
+                Text(
+                  "Range : ${(_fuelAmount * 45).toInt()} kms", // Assuming 45km per Liter
+                  style: const TextStyle(
+                    fontSize: 28, 
+                    fontWeight: FontWeight.bold, 
+                    fontFamily: 'Impact', // Use Impact or keep SF Pro with w900
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 15),
 
                 Expanded(
                   child: ListView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 150),
+                    padding: const EdgeInsets.fromLTRB(24, 10, 24, 150),
                     children: [
                       const Text(
                         "Activity History",
                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5),
                       ),
                       const SizedBox(height: 16),
-                      _buildTripTile("Office ➝ Home", "4.8 km", "-0.09 L", Colors.blue),
-                      _buildTripTile("Weekend Ride", "12.4 km", "-0.25 L", Colors.purple),
-                      _buildRefuelTile("Shell Station", "₹200", "+2.2 L", Colors.amber),
-                      _buildTripTile("Gym ➝ Cafe", "2.1 km", "-0.04 L", Colors.pink),
+                      _buildTripTile("Office ➝ Home", "4.8 km", "-0.1 L", Colors.blue),
+                      _buildTripTile("Weekend Ride", "12.4 km", "-0.3 L", Colors.purple),
+                      _buildRefuelTile("Shell Station", "₹150", "+1.5 L", Colors.amber), // Adjusted for 5L tank demo
+                      _buildTripTile("Gym ➝ Cafe", "2.1 km", "-0.05 L", Colors.pink),
                       
-                      // ── Real-time Control (For testing the "Rise and Fall") ──
+                      // ── Real-time Control ──
                       const SizedBox(height: 20),
-                      Text("ADJUST FUEL LEVEL (DEMO)", 
+                      const Text("ADJUST FUEL LEVEL (DEMO: 0L - 5L)", 
                         style: TextStyle(fontSize: 10, color: Colors.white24, fontWeight: FontWeight.bold)),
                       Slider(
-                        value: _fuelLevel,
+                        value: _fuelAmount,
+                        min: 0.0,
+                        max: 5.0,
                         activeColor: Colors.amber,
                         inactiveColor: Colors.white10,
-                        onChanged: (val) => setState(() => _fuelLevel = val),
+                        onChanged: (val) => setState(() => _fuelAmount = val),
                       ),
                     ],
                   ),
@@ -125,26 +138,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  Widget _buildFuelStats() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _statColumn("LITERS", "${(_fuelLevel * 10).toStringAsFixed(1)}L"),
-        Container(width: 1, height: 30, color: Colors.white10, margin: const EdgeInsets.symmetric(horizontal: 30)),
-        _statColumn("RANGE", "${(_fuelLevel * 450).toInt()} KM"),
-      ],
-    );
-  }
-
-  Widget _statColumn(String label, String value) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white38, letterSpacing: 1.5)),
-        Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
-      ],
-    );
-  }
-
   Widget _buildTripTile(String title, String dist, String fuel, Color color) {
     return _GlassCard(
       child: ListTile(
@@ -168,11 +161,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 }
 
-// ── UPDATED FUEL ORB WIDGET ──────────────────────────────────────────────────
+// ── FUEL ORB WIDGET ──────────────────────────────────────────────────────────
 class FuelOrb extends StatefulWidget {
-  final double fuelLevel;
+  final double fuelAmount;
   final double size;
-  const FuelOrb({super.key, required this.fuelLevel, this.size = 230});
+  const FuelOrb({super.key, required this.fuelAmount, this.size = 250});
 
   @override
   State<FuelOrb> createState() => _FuelOrbState();
@@ -200,7 +193,7 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return OCLiquidGlassGroup(
       settings: const OCLiquidGlassSettings(
-        refractStrength: -0.2, // Stronger warp for realistic 3D sphere look
+        refractStrength: -0.2, 
         blurRadiusPx: 0.5,
         specStrength: 55.0,
         specPower: 40.0,
@@ -211,18 +204,51 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
         height: widget.size,
         borderRadius: widget.size / 2,
         color: Colors.white.withOpacity(0.02),
-        // The ClipOval ensures the liquid never leaks outside the circle
         child: ClipOval(
-          child: AnimatedBuilder(
-            animation: _waveController,
-            builder: (context, child) {
-              return CustomPaint(
-                painter: _LiquidPainter(
-                  waveValue: _waveController.value,
-                  fillLevel: widget.fuelLevel,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 1. LIQUID LAYER
+              AnimatedBuilder(
+                animation: _waveController,
+                builder: (context, child) {
+                  // Isolate the decimal part for the 1-liter fill effect
+                  double fraction = widget.fuelAmount % 1.0;
+                  
+                  // Force full visual if resting exactly on a whole liter (e.g., 2.0L)
+                  if (widget.fuelAmount > 0 && fraction == 0.0) {
+                    fraction = 1.0;
+                  }
+
+                  return CustomPaint(
+                    size: Size(widget.size, widget.size),
+                    painter: _LiquidPainter(
+                      waveValue: _waveController.value,
+                      fillLevel: fraction, 
+                    ),
+                  );
+                },
+              ),
+
+              // 2. MASSIVE BOLD TEXT LAYER
+              Text(
+                widget.fuelAmount.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: widget.size * 0.45, 
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -2.0,
+                  height: 1.0,
+                  color: Colors.white.withOpacity(0.95), 
+                  shadows: const [
+                    Shadow(
+                      color: Colors.black54, 
+                      blurRadius: 15, 
+                      offset: Offset(0, 4)
+                    ),
+                  ]
                 ),
-              );
-            },
+              ),
+            ],
           ),
         ),
       ),
@@ -244,34 +270,30 @@ class _LiquidPainter extends CustomPainter {
         end: Alignment.bottomCenter,
         colors: [
           const Color(0xFFFFD700).withOpacity(0.9), // Bright surface
-          const Color(0xFFEAB308),                   // Core color
-          const Color(0xFF451A03),                   // Dark base
+          const Color(0xFFEAB308),                  // Core color
+          const Color(0xFF451A03),                  // Dark base
         ],
       ).createShader(Offset.zero & size);
 
     final path = Path();
     
     // Calculate the Y coordinate based on fuel level
-    // 1.0 = top (0 height), 0.0 = bottom (full height)
     final fillHeight = size.height * (1 - fillLevel);
 
     // Start drawing the sloshing top edge
     path.moveTo(0, fillHeight);
     for (double x = 0; x <= size.width; x++) {
-      // Sine wave for the sloshing effect
       double sine = math.sin((waveValue * 2 * math.pi) + (x / size.width * 2 * math.pi));
       path.lineTo(x, fillHeight + (sine * 8)); 
     }
 
-    // Close the path at the bottom corners of the container
-    // (ClipOval handles the rounding for us)
     path.lineTo(size.width, size.height);
     path.lineTo(0, size.height);
     path.close();
 
     canvas.drawPath(path, paint);
     
-    // Adds a glossy "rim" to the top of the fuel surface
+    // Glossy rim
     final rimPaint = Paint()
       ..color = Colors.white.withOpacity(0.3)
       ..style = PaintingStyle.stroke
