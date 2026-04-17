@@ -21,7 +21,7 @@ class BikeFuelAgentApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF09090B),
-        fontFamily: 'SF Pro Display', // Will fallback to default if not in pubspec
+        fontFamily: 'SF Pro Display',
         brightness: Brightness.dark,
         useMaterial3: true,
       ),
@@ -38,8 +38,7 @@ class HomeDashboard extends StatefulWidget {
 }
 
 class _HomeDashboardState extends State<HomeDashboard> {
-  // Fuel amount now tracks exact liters (0.0 to 5.0 Max)
-  double _fuelAmount = 2.5;
+  double _fuelAmount = 2.5; // Liter amount (0.0 to 5.0)
 
   @override
   Widget build(BuildContext context) {
@@ -47,27 +46,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
       extendBody: true,
       body: Stack(
         children: [
-          // ── Layer 1: Background ──────────────────────────────────────────
           const _BackgroundLayer(),
-
-          // ── Layer 2: Main Content ────────────────────────────────────────
           SafeArea(
             child: Column(
               children: [
                 _buildHeader(),
                 
-                // THE 3D PETROL ORB
                 const SizedBox(height: 10),
+                // THE SUBMERGED ORB
                 FuelOrb(fuelAmount: _fuelAmount),
                 
-                // RANGE TEXT UNDER ORB
                 const SizedBox(height: 15),
                 Text(
-                  "Range : ${(_fuelAmount * 45).toInt()} kms", // Assuming 45km per Liter
+                  "Range : ${(_fuelAmount * 45).toInt()} kms",
                   style: const TextStyle(
                     fontSize: 28, 
                     fontWeight: FontWeight.bold, 
-                    fontFamily: 'Impact', // Use Impact or keep SF Pro with w900
+                    fontFamily: 'Impact',
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -85,12 +80,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       const SizedBox(height: 16),
                       _buildTripTile("Office ➝ Home", "4.8 km", "-0.1 L", Colors.blue),
                       _buildTripTile("Weekend Ride", "12.4 km", "-0.3 L", Colors.purple),
-                      _buildRefuelTile("Shell Station", "₹150", "+1.5 L", Colors.amber), // Adjusted for 5L tank demo
-                      _buildTripTile("Gym ➝ Cafe", "2.1 km", "-0.05 L", Colors.pink),
+                      _buildRefuelTile("Shell Station", "₹150", "+1.5 L", Colors.amber),
                       
-                      // ── Real-time Control ──
                       const SizedBox(height: 20),
-                      const Text("ADJUST FUEL LEVEL (DEMO: 0L - 5L)", 
+                      const Text("ADJUST FUEL LEVEL (0L - 5L)", 
                         style: TextStyle(fontSize: 10, color: Colors.white24, fontWeight: FontWeight.bold)),
                       Slider(
                         value: _fuelAmount,
@@ -106,15 +99,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
               ],
             ),
           ),
-
-          // ── Layer 3: Nav Bar ─────────────────────────────────────────────
           const _FloatingLiquidGlassNavBar(),
         ],
       ),
     );
   }
 
-  // --- UI BUILDERS ---
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 15.0),
@@ -124,8 +114,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Good Afternoon", style: TextStyle(fontSize: 14, color: Colors.white54)),
-              Text("Aagasaveeran", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+              Text("Aagasaveeran", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800 , fontFamily: 'googleSans')),
             ],
           ),
           CircleAvatar(
@@ -161,7 +150,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 }
 
-// ── FUEL ORB WIDGET ──────────────────────────────────────────────────────────
+// ── REFINED FUEL ORB (SUBMERGED TEXT LOGIC) ──────────────────────────────────
 class FuelOrb extends StatefulWidget {
   final double fuelAmount;
   final double size;
@@ -193,11 +182,11 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return OCLiquidGlassGroup(
       settings: const OCLiquidGlassSettings(
-        refractStrength: -0.2, 
-        blurRadiusPx: 0.5,
-        specStrength: 55.0,
-        specPower: 40.0,
-        lightbandStrength: 0.8,
+        refractStrength: -0.25, // Stronger refraction to warp the submerged text
+        blurRadiusPx: 0.8,
+        specStrength: 65.0,
+        specPower: 35.0,
+        lightbandStrength: 0.9,
       ),
       child: OCLiquidGlass(
         width: widget.size,
@@ -208,45 +197,35 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // 1. LIQUID LAYER
+              // LAYER 1: THE TEXT (Bottom - will be drowned)
+              Text(
+                widget.fuelAmount.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: widget.size * 0.48, 
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -2.0,
+                  color: Colors.white.withOpacity(0.9),
+                  shadows: [
+                    Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 15),
+                  ],
+                ),
+              ),
+
+              // LAYER 2: THE LIQUID (Top - washes over text)
               AnimatedBuilder(
                 animation: _waveController,
                 builder: (context, child) {
-                  // Isolate the decimal part for the 1-liter fill effect
                   double fraction = widget.fuelAmount % 1.0;
-                  
-                  // Force full visual if resting exactly on a whole liter (e.g., 2.0L)
-                  if (widget.fuelAmount > 0 && fraction == 0.0) {
-                    fraction = 1.0;
-                  }
+                  if (widget.fuelAmount > 0 && fraction == 0.0) fraction = 1.0;
 
                   return CustomPaint(
                     size: Size(widget.size, widget.size),
-                    painter: _LiquidPainter(
+                    painter: _SubmergedLiquidPainter(
                       waveValue: _waveController.value,
                       fillLevel: fraction, 
                     ),
                   );
                 },
-              ),
-
-              // 2. MASSIVE BOLD TEXT LAYER
-              Text(
-                widget.fuelAmount.toStringAsFixed(1),
-                style: TextStyle(
-                  fontSize: widget.size * 0.45, 
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -2.0,
-                  height: 1.0,
-                  color: Colors.white.withOpacity(0.95), 
-                  shadows: const [
-                    Shadow(
-                      color: Colors.black54, 
-                      blurRadius: 15, 
-                      offset: Offset(0, 4)
-                    ),
-                  ]
-                ),
               ),
             ],
           ),
@@ -256,35 +235,33 @@ class _FuelOrbState extends State<FuelOrb> with SingleTickerProviderStateMixin {
   }
 }
 
-class _LiquidPainter extends CustomPainter {
+class _SubmergedLiquidPainter extends CustomPainter {
   final double waveValue;
   final double fillLevel;
 
-  _LiquidPainter({required this.waveValue, required this.fillLevel});
+  _SubmergedLiquidPainter({required this.waveValue, required this.fillLevel});
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Semi-transparent liquid so text "drowns" but is still visible
     final paint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          const Color(0xFFFFD700).withOpacity(0.9), // Bright surface
-          const Color(0xFFEAB308),                  // Core color
-          const Color(0xFF451A03),                  // Dark base
+          const Color.fromARGB(255, 214, 189, 44).withOpacity(0.65), // Surface
+          const Color.fromARGB(255, 234, 178, 8).withOpacity(0.70), // Mid
+          const Color.fromARGB(255, 155, 94, 4).withOpacity(0.80), // Deep
         ],
       ).createShader(Offset.zero & size);
 
     final path = Path();
-    
-    // Calculate the Y coordinate based on fuel level
     final fillHeight = size.height * (1 - fillLevel);
 
-    // Start drawing the sloshing top edge
     path.moveTo(0, fillHeight);
     for (double x = 0; x <= size.width; x++) {
       double sine = math.sin((waveValue * 2 * math.pi) + (x / size.width * 2 * math.pi));
-      path.lineTo(x, fillHeight + (sine * 8)); 
+      path.lineTo(x, fillHeight + (sine * 10)); // Dynamic sloshing
     }
 
     path.lineTo(size.width, size.height);
@@ -293,11 +270,11 @@ class _LiquidPainter extends CustomPainter {
 
     canvas.drawPath(path, paint);
     
-    // Glossy rim
+    // Highlight the "surface" line as it passes over the text
     final rimPaint = Paint()
       ..color = Colors.white.withOpacity(0.3)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
+      ..strokeWidth = 3.0;
     canvas.drawPath(path, rimPaint);
   }
 
@@ -305,7 +282,7 @@ class _LiquidPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// ── SUPPORTING UI COMPONENTS ────────────────────────────────────────────────
+// ── UI HELPERS ──────────────────────────────────────────────────────────────
 class _BackgroundLayer extends StatelessWidget {
   const _BackgroundLayer();
   @override
@@ -365,18 +342,17 @@ class _FloatingLiquidGlassNavBar extends StatelessWidget {
             height: 75,
             borderRadius: 38,
             color: Colors.white.withOpacity(0.08),
-            child: Row(
+            child: const Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                const Icon(Icons.grid_view_rounded, size: 26, color: Colors.white),
-                const Icon(Icons.explore_rounded, size: 26, color: Colors.white38),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                  child: const Icon(Icons.add, color: Colors.black, size: 28),
+                Icon(Icons.grid_view_rounded, size: 26, color: Colors.white),
+                Icon(Icons.explore_rounded, size: 26, color: Colors.white38),
+                CircleAvatar(
+                  backgroundColor: Colors.white,
+                  child: Icon(Icons.add, color: Colors.black),
                 ),
-                const Icon(Icons.history_rounded, size: 26, color: Colors.white38),
-                const Icon(Icons.person_rounded, size: 26, color: Colors.white38),
+                Icon(Icons.history_rounded, size: 26, color: Colors.white38),
+                Icon(Icons.person_rounded, size: 26, color: Colors.white38),
               ],
             ),
           ),

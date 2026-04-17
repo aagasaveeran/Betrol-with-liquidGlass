@@ -11,6 +11,9 @@ dependencies:
     sdk: flutter
   oc_liquid_glass: ^0.2.0
   cupertino_icons: ^1.0.8
+  geolocator: ^13.0.1
+  flutter_activity_recognition: ^2.0.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
