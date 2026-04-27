@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart'; // Added for debugPrint
-import 'package:geolocator/geolocator.dart' hide ActivityType; 
-import 'package:flutter_activity_recognition/flutter_activity_recognition.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -51,9 +50,7 @@ class TripRecord {
 }
 
 class FuelLogicService {
-  final _activityRecognition = FlutterActivityRecognition.instance;
   final _uuid = const Uuid();
-  
   Position? _lastPosition;
   double _tripDistanceBuffer = 0.0; 
 
@@ -63,8 +60,39 @@ class FuelLogicService {
   Stream<double> get consumptionStream => _consumptionController.stream;
   Stream<Map<String, double>> get rideStatsStream => _rideStatsController.stream;
 
-  Stream<bool> get ridingStream => _activityRecognition.activityStream.map((activity) => 
-    activity.type == ActivityType.IN_VEHICLE || activity.type == ActivityType.ON_BICYCLE);
+  // ── THE AUTOMATIC BRAIN ──
+  FuelLogicService() {
+    print("🧠 AGENT: Automatic Brain initialized.");
+    
+    // Auto-request permissions and start listening for movement
+    Geolocator.requestPermission().then((permission) {
+      if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+        print("✅ AGENT: Permissions active. Monitoring speed for automatic tracking...");
+        
+        ridingStream.listen((isRiding) {
+          print("🔔 AGENT: State change detected! isRiding = $isRiding");
+          startDistanceTracking(isRiding);
+        });
+      } else {
+        print("⚠️ AGENT: Location permission denied. Tracking will not work.");
+      }
+    });
+  }
+
+  // ── THE SPEED DETECTOR (Mock/Lockito Ready) ──
+  Stream<bool> get ridingStream {
+    return Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 0, 
+      ),
+    ).map((pos) {
+      // Speed > 1.5 m/s (approx 5.4 km/h) = Riding
+      bool isMoving = pos.speed > 1.5;
+      print("🤖 AUTO-SPEED: ${(pos.speed * 3.6).toStringAsFixed(1)} km/h | isRiding: $isMoving");
+      return isMoving;
+    }).distinct(); 
+  }
 
   // ── PERSISTENCE METHODS ──
 
@@ -91,7 +119,7 @@ class FuelLogicService {
       isHiddenOnHome: false,
     );
     
-    await _saveTrip(refuelEntry); // Must await to prevent loss on close
+    await _saveTrip(refuelEntry);
     return refuelEntry;
   }
 
@@ -124,7 +152,6 @@ class FuelLogicService {
     await prefs.setStringList('trip_history', history);
   }
 
-  /// ROBUST PARSING: Prevents infinite loading circle
   Future<List<TripRecord>> loadAllHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -139,7 +166,7 @@ class FuelLogicService {
           records.add(TripRecord.fromJson(decoded));
         } catch (e) {
           debugPrint("Agent: Skipping corrupted history item: $e");
-          continue; // Skip individual broken items
+          continue; 
         }
       }
       return records;
@@ -174,11 +201,16 @@ class FuelLogicService {
   }
 
   void startDistanceTracking(bool isRiding) {
+    print("🔄 DEBUG: startDistanceTracking called. isRiding = $isRiding");
+
     if (!isRiding) {
+      print("🛑 DEBUG: Not riding. Cleaning up.");
       _handleRideEnd();
       _lastPosition = null;
       return;
     }
+
+    print("🛰️ DEBUG: Opening Location Stream...");
 
     Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
@@ -186,19 +218,29 @@ class FuelLogicService {
         distanceFilter: 2 
       ),
     ).listen((Position position) {
+      print("📍 RAW LOCATION: Lat: ${position.latitude}, Lon: ${position.longitude}");
+      print("🚀 RAW SPEED: ${position.speed} m/s");
+
       if (_lastPosition != null) {
         double dist = Geolocator.distanceBetween(
           _lastPosition!.latitude, _lastPosition!.longitude, 
           position.latitude, position.longitude
         ) / 1000;
         
+        print("📏 DISTANCE DELTA: $dist km");
+
         _tripDistanceBuffer += dist;
-        _consumptionController.add(dist / 45);
+        double fuelConsumed = dist / 45;
+        _consumptionController.add(fuelConsumed);
+        
+        print("⛽ FUEL CONSUMED: $fuelConsumed | TOTAL TRIP: $_tripDistanceBuffer km");
 
         _rideStatsController.add({
           "speed": position.speed * 3.6,
           "distance": _tripDistanceBuffer
         });
+      } else {
+        print("⏳ DEBUG: First position received. Waiting for next movement...");
       }
       _lastPosition = position;
     });
@@ -206,9 +248,7 @@ class FuelLogicService {
 
   Future<bool> requestPermissions() async {
     LocationPermission location = await Geolocator.requestPermission();
-    PermissionRequestResult activity = await _activityRecognition.checkPermission();
     return location != LocationPermission.denied && 
-           location != LocationPermission.deniedForever &&
-           activity == PermissionRequestResult.GRANTED;
+           location != LocationPermission.deniedForever;
   }
 }
