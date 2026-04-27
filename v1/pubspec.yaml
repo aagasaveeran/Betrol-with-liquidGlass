@@ -14,6 +14,8 @@ dependencies:
   geolocator: ^13.0.1
   flutter_activity_recognition: ^2.0.0
   permission_handler: ^11.3.1
+  shared_preferences: ^2.5.2
+  uuid: ^4.3.3
 
 dev_dependencies:
   flutter_test:
