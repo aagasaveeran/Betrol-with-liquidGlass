@@ -54,6 +54,9 @@ class FuelLogicService {
   Position? _lastPosition;
   double _tripDistanceBuffer = 0.0; 
 
+  // --- NEW: Tracking Subscription Manager ---
+  StreamSubscription<Position>? _positionSubscription;
+
   final _consumptionController = StreamController<double>.broadcast();
   final _rideStatsController = StreamController<Map<String, double>>.broadcast();
 
@@ -64,7 +67,6 @@ class FuelLogicService {
   FuelLogicService() {
     print("🧠 AGENT: Automatic Brain initialized.");
     
-    // Auto-request permissions and start listening for movement
     Geolocator.requestPermission().then((permission) {
       if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
         print("✅ AGENT: Permissions active. Monitoring speed for automatic tracking...");
@@ -201,6 +203,9 @@ class FuelLogicService {
   }
 
   void startDistanceTracking(bool isRiding) {
+    // 1. Kill any existing listener to prevent "Double Tracking"
+    _positionSubscription?.cancel();
+    
     print("🔄 DEBUG: startDistanceTracking called. isRiding = $isRiding");
 
     if (!isRiding) {
@@ -212,7 +217,8 @@ class FuelLogicService {
 
     print("🛰️ DEBUG: Opening Location Stream...");
 
-    Geolocator.getPositionStream(
+    // 2. Assign the listener to our variable so we can stop it later
+    _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high, 
         distanceFilter: 2 
@@ -226,6 +232,15 @@ class FuelLogicService {
           _lastPosition!.latitude, _lastPosition!.longitude, 
           position.latitude, position.longitude
         ) / 1000;
+
+        // --- ADD THIS SANITY FILTER ---
+        // If the "jump" is more than 0.5km in one update, it's a GPS error/snap.
+        if (dist > 0.5) {
+          print("⚠️ JUMP DETECTED: Ignoring fake jump of $dist km");
+          _lastPosition = position; // Update position but don't count the distance
+          return; 
+        }
+        // ------------------------------
         
         print("📏 DISTANCE DELTA: $dist km");
 
