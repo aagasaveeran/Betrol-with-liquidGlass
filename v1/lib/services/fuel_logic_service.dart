@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart'; // Added for debugPrint
 import 'package:geolocator/geolocator.dart' hide ActivityType; 
 import 'package:flutter_activity_recognition/flutter_activity_recognition.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,12 +40,12 @@ class TripRecord {
 
   factory TripRecord.fromJson(Map<String, dynamic> json) => TripRecord(
     id: json['id'] ?? const Uuid().v4(),
-    title: json['title'], 
-    distance: json['distance'], 
-    fuelConsumed: json['fuelConsumed'], 
-    colorValue: json['colorValue'],
+    title: json['title'] ?? "Unknown Activity", 
+    distance: json['distance'] ?? "0.0", 
+    fuelConsumed: json['fuelConsumed'] ?? "0.0", 
+    colorValue: json['colorValue'] ?? 0xFFFFFFFF,
     isRefuel: json['isRefuel'] ?? false,
-    dateTime: DateTime.parse(json['dateTime']),
+    dateTime: DateTime.parse(json['dateTime'] ?? DateTime.now().toIso8601String()),
     isHiddenOnHome: json['isHiddenOnHome'] ?? false,
   );
 }
@@ -65,6 +66,8 @@ class FuelLogicService {
   Stream<bool> get ridingStream => _activityRecognition.activityStream.map((activity) => 
     activity.type == ActivityType.IN_VEHICLE || activity.type == ActivityType.ON_BICYCLE);
 
+  // ── PERSISTENCE METHODS ──
+
   Future<void> saveFuelLevel(double level) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('fuel_level', level);
@@ -75,7 +78,6 @@ class FuelLogicService {
     return prefs.getDouble('fuel_level') ?? 2.5;
   }
 
-  // Inside FuelLogicService class
   Future<TripRecord> logRefuel(double liters, double cost) async {
     final now = DateTime.now();
     final refuelEntry = TripRecord(
@@ -89,32 +91,28 @@ class FuelLogicService {
       isHiddenOnHome: false,
     );
     
-    await _saveTrip(refuelEntry);
-    return refuelEntry; // Return the record so UI can use it immediately
+    await _saveTrip(refuelEntry); // Must await to prevent loss on close
+    return refuelEntry;
   }
 
   Future<void> dismissTripFromHome(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    List<String> historyStrings = prefs.getStringList('trip_history') ?? [];
+    final all = await loadAllHistory();
     
-    List<TripRecord> history = historyStrings
-        .map((s) => TripRecord.fromJson(jsonDecode(s)))
-        .toList();
-
-    int index = history.indexWhere((t) => t.id == id);
+    int index = all.indexWhere((t) => t.id == id);
     if (index != -1) {
-      history[index] = TripRecord(
-        id: history[index].id,
-        title: history[index].title,
-        distance: history[index].distance,
-        fuelConsumed: history[index].fuelConsumed,
-        colorValue: history[index].colorValue,
-        dateTime: history[index].dateTime,
-        isRefuel: history[index].isRefuel,
+      all[index] = TripRecord(
+        id: all[index].id,
+        title: all[index].title,
+        distance: all[index].distance,
+        fuelConsumed: all[index].fuelConsumed,
+        colorValue: all[index].colorValue,
+        dateTime: all[index].dateTime,
+        isRefuel: all[index].isRefuel,
         isHiddenOnHome: true,
       );
       
-      List<String> updatedStrings = history.map((t) => jsonEncode(t.toJson())).toList();
+      List<String> updatedStrings = all.map((t) => jsonEncode(t.toJson())).toList();
       await prefs.setStringList('trip_history', updatedStrings);
     }
   }
@@ -126,17 +124,37 @@ class FuelLogicService {
     await prefs.setStringList('trip_history', history);
   }
 
+  /// ROBUST PARSING: Prevents infinite loading circle
   Future<List<TripRecord>> loadAllHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> history = prefs.getStringList('trip_history') ?? [];
-    return history.map((item) => TripRecord.fromJson(jsonDecode(item))).toList();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<String>? historyStrings = prefs.getStringList('trip_history');
+      
+      if (historyStrings == null || historyStrings.isEmpty) return [];
+
+      List<TripRecord> records = [];
+      for (String item in historyStrings) {
+        try {
+          final Map<String, dynamic> decoded = jsonDecode(item);
+          records.add(TripRecord.fromJson(decoded));
+        } catch (e) {
+          debugPrint("Agent: Skipping corrupted history item: $e");
+          continue; // Skip individual broken items
+        }
+      }
+      return records;
+    } catch (e) {
+      debugPrint("Agent: Critical error loading history: $e");
+      return [];
+    }
   }
 
-  // Simplified this to always be the source of truth for the Home screen
   Future<List<TripRecord>> loadHomeHistory() async {
     final all = await loadAllHistory();
     return all.where((t) => !t.isHiddenOnHome).toList();
   }
+
+  // ── TRACKING LOGIC ──
 
   void _handleRideEnd() async {
     if (_tripDistanceBuffer > 0.02) { 
